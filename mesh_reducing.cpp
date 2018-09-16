@@ -68,6 +68,9 @@ void WindowSizeCallBack(GLFWwindow *pWindow, int nWidth, int nHeight) {
 	TwWindowSize(g_nWidth, g_nHeight);
 }
 
+//*****************************
+// PRESS U TO DECIMATE MESH~~~~
+//****************************
 int main(void)
 {
 	int nUseMouse = 0;
@@ -648,3 +651,10 @@ int getIndex(glm::vec3 v1, std::vector<glm::vec3> indexed_vertices, std::vector<
 }
 
 
+
+/*
+	references:
+	http://graphics.stanford.edu/courses/cs468-10-fall/LectureSlides/08_Simplification.pdf
+	http://jerrytalton.net/research/t-ssmsa-04/paper.pdf
+
+*/
