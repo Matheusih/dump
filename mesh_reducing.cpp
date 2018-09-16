@@ -202,81 +202,127 @@ int main(void)
 	GLuint LightID = glGetUniformLocation(programID, "LightPosition_worldspace");
 
 	// For speed computation
+	std::vector<glm::vec3> original_model_v = indexed_vertices;
+	std::vector<glm::vec3> original_model_n = indexed_normals;
+	std::vector<unsigned short> original_model_i = indices;
+
 	double lastTime = glfwGetTime();
 	int nbFrames = 0;
 	std::vector<glm::vec3> priorList;
-	priorList = createPriorityList(indexed_vertices, indices);
-	//priorList = createPriorityList_Clustering(indexed_vertices, indices);
-	int i1 = 0, i2 = 1;
-	glm::vec3 last1, last2;
+	priorList = createPriorityList(indexed_vertices, indices);    // smallest edges first
 	printf("Generated a priority list with %zu edges!\n", priorList.size() / 2);
 	printf("Model has %zu vertices\n", priorList.size());
-	float range = 0.01f;
+	//priorList = createPriorityList_Clustering(indexed_vertices, indices);    //bigger num of neighbours first
+	int i1 = 0, i2 = 1, wireframe = 0, target = 0;  //utils
+	glm::vec3 last1, last2, last_vertex;
 
+	last_vertex = priorList[priorList.size() - 1];
+
+	float range = 0.05f;  // the range in which we grab vertices around our cluster cell
+	int vertex_update_rate = 1;  // the higher the less the vertex will move in direction of cluster cell! if 1 it will move right away!
+
+	std::vector<glm::vec3> inRange;  //finds all vertices around target
+	inRange = findVerticesInRange(indexed_vertices, range, priorList[i1], indices);
 	do {
 		if (glfwGetKey(g_pWindow, GLFW_KEY_U) == GLFW_PRESS) {
-			if ((uint) i1 < (priorList.size()/2 +1) &&  (uint) i2 < (priorList.size()/2 +1)) {
-				if (priorList[i1] == last1 && priorList[i2] == last2) {
+
+			if ((uint)i1 < (priorList.size()) && (uint)i2 < (priorList.size())) {
+				if (inRange.size() > 0) {
+					for (int i = 0; i < inRange.size(); ++i) {
+						if (glm::distance(inRange[i], priorList[i1]) > 0.0001f) {   //smooth resolution change! converges the vertices in range until they're very close and then cluster em!
+							for (int j = 0; j < indexed_vertices.size(); ++j) {
+								if (indexed_vertices[j] == inRange[i]) {
+									target = j;
+									break;
+								}
+							}
+							indexed_vertices[target].x += (priorList[i1].x - indexed_vertices[target].x) / vertex_update_rate; //updates vertex position in indexed buffer
+							indexed_vertices[target].y += (priorList[i1].y - indexed_vertices[target].y) / vertex_update_rate;
+							indexed_vertices[target].z += (priorList[i1].z - indexed_vertices[target].z) / vertex_update_rate;
+
+							inRange[i].x += (priorList[i1].x - inRange[i].x) / vertex_update_rate;   //updates vertex position in inRange buffer
+							inRange[i].y += (priorList[i1].y - inRange[i].y) / vertex_update_rate;
+							inRange[i].z += (priorList[i1].z - inRange[i].z) / vertex_update_rate;
+						}
+						else {
+							inRange.erase(inRange.begin() + i);
+						}
+						if (inRange.size() == 0) {
+							indexed_vertices = clustering_remove(indexed_vertices, indices, range, priorList[i1]);
+
+						}
+					}
+				}/*
+				else if (priorList[i1] == last1 && priorList[i2] == last2) {
+					i1 += priorList.size();
+				}*/
+				else if (priorList[i1] == last_vertex) {
 					i1 += priorList.size();
 				}
 				else {
-					indexed_vertices = clustering_remove(indexed_vertices, indices, range, priorList[i1]);
+					//indexed_vertices = clustering_remove(indexed_vertices, indices, range, priorList[i1]);
+					i1 += 1;
+					inRange = findVerticesInRange(indexed_vertices, range, priorList[i1], indices);
 					//indexed_vertices = edge_collapse(indexed_vertices, indices, priorList[i1], priorList[i2]);
 					indices = updateIndices(indexed_vertices, indices, priorList[i1], priorList[i1]);    // change first priorList[i1] to midPoint(priorList[i1],priorList[i2]) if using half edge collapse
-					//indexed_normals = updateNormals(normals, vertices, indices);
 					last1 = priorList[i1];
 					last2 = priorList[i2];
 				}
 			}
 			else {
+
 				printf("Priority List ended!\n");
 				printf("Model has now %zu vertices\n", indices.size());
 				if (indices.size() > 3 && indexed_vertices.size() > 1) {
-					printf("CREATING NEW ONE!!\n");
-					indexed_normals = updateNormals(normals, vertices, indices);
+					indexed_normals = updateNormals(normals, indexed_vertices, indices);	// updates normals of model
+					printf("CREATING NEW ONE!!\n\n");
 					priorList = createPriorityList(indexed_vertices, indices);
+					last_vertex = priorList[priorList.size() - 1];
 					i1 = 0;
-					i2 = 1;
+					//i2 = 1;
 					range += 0.01f;  //increases clustering range for further reducing!
 				}
 				else {
-					printf("No further reducing possible\n");
+					printf("No further reducing possible\n\n");
 				}
 			}
-			i1+=1;   // set this guy to 2 if using edge_collapse
-			i2+=2;
-			
-			glGenBuffers(1, &vertexbuffer);
+			//i1+=1;   // set this guy to 2 if using edge_collapse
+			//i2+=2;
+
+
 			glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
 			glBufferData(GL_ARRAY_BUFFER, indexed_vertices.size() * sizeof(glm::vec3), &indexed_vertices[0], GL_STATIC_DRAW);
-			glGenBuffers(1, &uvbuffer);
 			glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
 			glBufferData(GL_ARRAY_BUFFER, indexed_uvs.size() * sizeof(glm::vec2), &indexed_uvs[0], GL_STATIC_DRAW);
-			glGenBuffers(1, &normalbuffer);
 			glBindBuffer(GL_ARRAY_BUFFER, normalbuffer);
 			glBufferData(GL_ARRAY_BUFFER, indexed_normals.size() * sizeof(glm::vec3), &indexed_normals[0], GL_STATIC_DRAW);
-			glGenBuffers(1, &elementbuffer);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementbuffer);
 			glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned short), &indices[0], GL_STATIC_DRAW);
 
 		}
 		if (glfwGetKey(g_pWindow, GLFW_KEY_R) == GLFW_PRESS) {
-			res = loadOBJ("mesh/suzanne.obj", vertices, uvs, normals);
-			glGenBuffers(1, &vertexbuffer);
+			indexed_vertices = original_model_v;  // Restores model if R is pressed
 			glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
 			glBufferData(GL_ARRAY_BUFFER, indexed_vertices.size() * sizeof(glm::vec3), &indexed_vertices[0], GL_STATIC_DRAW);
-			glGenBuffers(1, &uvbuffer);
 			glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
 			glBufferData(GL_ARRAY_BUFFER, indexed_uvs.size() * sizeof(glm::vec2), &indexed_uvs[0], GL_STATIC_DRAW);
-			glGenBuffers(1, &normalbuffer);
 			glBindBuffer(GL_ARRAY_BUFFER, normalbuffer);
 			glBufferData(GL_ARRAY_BUFFER, indexed_normals.size() * sizeof(glm::vec3), &indexed_normals[0], GL_STATIC_DRAW);
-			glGenBuffers(1, &elementbuffer);
 			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementbuffer);
 			glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned short), &indices[0], GL_STATIC_DRAW);
-
 		}
 
+		
+		if (glfwGetKey(g_pWindow, GLFW_KEY_W) == GLFW_PRESS) {
+			if (!wireframe) {
+				glPolygonMode(GL_FRONT_AND_BACK, GL_LINE);
+				wireframe = 1;
+			}
+			else {
+				glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+				wireframe = 0;
+			}
+		}
 		check_gl_error();
 
 		//use the control key to free the mouse
@@ -441,7 +487,7 @@ std::vector<glm::vec3> edge_collapse(
 
 //update indices buffer removing deprecated triangles, updating indices NOTE: if using half edge collapse pass midPoint as v1!!!
 std::vector<unsigned short> updateIndices(std::vector<glm::vec3> vertices,
-	                                          std::vector<unsigned short> indices,glm::vec3 v1,glm::vec3 v2) {
+	std::vector<unsigned short> indices, glm::vec3 v1, glm::vec3 v2) {
 	unsigned short new_index = -1;
 	//printf("Updating Indices!\n");
 	for (uint i = 0; i < indices.size(); ++i) {
@@ -455,7 +501,7 @@ std::vector<unsigned short> updateIndices(std::vector<glm::vec3> vertices,
 		}
 	}
 	for (uint i = 0; i < indices.size(); i += 3) {
-		if (indices[i] == indices[i+1]  || indices[i]==indices[i+2] || indices[i+1] == indices[i+2]) {
+		if (indices[i] == indices[i + 1] || indices[i] == indices[i + 2] || indices[i + 1] == indices[i + 2]) {
 			indices.erase(indices.begin() + i, indices.begin() + (i + 3));
 			//printf("ERASING INDICES FROM BUFFER\N");
 		}
@@ -510,7 +556,7 @@ std::vector<glm::vec3> createPriorityList(std::vector<glm::vec3> indexed_vertice
 		priorList.insert(priorList.end(), indexed_vertices[smallest_i2]);
 		priorList.insert(priorList.end(), indexed_vertices[smallest_i1]);
 
-	} while (priorList.size() < indices.size());
+	} while (priorList.size() < indices.size() / 2);
 
 
 	return priorList;
@@ -518,8 +564,8 @@ std::vector<glm::vec3> createPriorityList(std::vector<glm::vec3> indexed_vertice
 
 
 //Find all vertices around center within given range
-std::vector<glm::vec3> findVerticesInRange(std::vector<glm::vec3> vertices, float range, 
-	                                         glm::vec3 center, std::vector<unsigned short> indices) {
+std::vector<glm::vec3> findVerticesInRange(std::vector<glm::vec3> vertices, float range,
+	glm::vec3 center, std::vector<unsigned short> indices) {
 	std::vector<glm::vec3> verticesInBox;
 	float xmax = center.x + range; float xmin = center.x - range;
 	float ymax = center.y + range; float ymin = center.y - range;
@@ -548,14 +594,14 @@ std::vector<glm::vec3> updateNormals(std::vector<glm::vec3> normals, std::vector
 	std::vector<glm::vec3> faces, blacklist, new_normals;
 	uint count = 0, face_index = 0;
 	for (uint i = 0; i < indices.size() - 3; i += 3) {  //calculates the normal of every single triangle
-		a = vertices[ indices[i] ];
+		a = vertices[indices[i]];
 		b = vertices[indices[i + 1]];
 		c = vertices[indices[i + 2]];
 		normal = computeNormal(a, b, c);
 		faces.insert(faces.end(), normal);
 	}
 
-	for (uint i = 0; i < indices.size() - 1; ++i) {  
+	for (uint i = 0; i < indices.size() - 1; ++i) {
 		sum_vector *= 0.0f;
 		if (!is_in_vector(blacklist, vertices[indices[i]])) {
 			for (uint j = 0; j < indices.size() - 1; ++j) {
@@ -564,7 +610,7 @@ std::vector<glm::vec3> updateNormals(std::vector<glm::vec3> normals, std::vector
 				}
 				else {
 					if (vertices[indices[j]] == vertices[indices[i]]) {  //sum normals of every triangle near vertex
-						face_index =  myfloor((float)(j / 3));
+						face_index = myfloor((float)(j / 3));
 						if (face_index < faces.size() - 1) {
 							//printf("accessing face_index: %d\n", face_index);
 							sum_vector += faces[face_index];
@@ -601,7 +647,7 @@ glm::vec3 computeNormal(
 }
 
 int myfloor(float x) {
-	int y = (int) x;
+	int y = (int)x;
 	if ((x - y) > 0.5f) {
 		return y + 1;
 	}
