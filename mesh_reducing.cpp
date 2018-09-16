@@ -219,7 +219,7 @@ int main(void)
 	last_vertex = priorList[priorList.size() - 1];
 
 	float range = 0.05f;  // the range in which we grab vertices around our cluster cell
-	int vertex_update_rate = 1;  // the higher the less the vertex will move in direction of cluster cell! if 1 it will move right away!
+	int vertex_update_rate = 10;  // the higher the less the vertex will move in direction of cluster cell! if 1 it will move right away!
 
 	std::vector<glm::vec3> inRange;  //finds all vertices around target
 	inRange = findVerticesInRange(indexed_vertices, range, priorList[i1], indices);
