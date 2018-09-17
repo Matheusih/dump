@@ -35,6 +35,8 @@ using namespace glm;
 
 #include <cmath>   
 
+
+std::vector<glm::vec3> createPriorityList_test(std::vector<glm::vec3> indexed_vertices, std::vector<unsigned short> indices);
 std::vector<glm::vec3> findVerticesInRange(std::vector<glm::vec3> vertices, float range, glm::vec3 center, std::vector<unsigned short> indices);
 std::vector<glm::vec3> updateNormals(std::vector<glm::vec3> normals, std::vector<glm::vec3> vertices, std::vector<unsigned short> indices);
 glm::vec3 computeNormal(glm::vec3 const & a, glm::vec3 const & b, glm::vec3 const & c);
@@ -209,16 +211,16 @@ int main(void)
 	double lastTime = glfwGetTime();
 	int nbFrames = 0;
 	std::vector<glm::vec3> priorList;
-	priorList = createPriorityList(indexed_vertices, indices);    // smallest edges first
+	priorList = createPriorityList_test(indexed_vertices, indices);    // smallest edges first
 	printf("Generated a priority list with %zu edges!\n", priorList.size() / 2);
-	printf("Model has %zu vertices\n", priorList.size());
+	printf("Model has %zu vertices\n", indices.size());
 	//priorList = createPriorityList_Clustering(indexed_vertices, indices);    //bigger num of neighbours first
 	int i1 = 0, i2 = 1, wireframe = 0, target = 0;  //utils
 	glm::vec3 last1, last2, last_vertex;
 
 	last_vertex = priorList[priorList.size() - 1];
 
-	float range = 0.05f;  // the range in which we grab vertices around our cluster cell
+	float range = 0.1f;  // the range in which we grab vertices around our cluster cell
 	int vertex_update_rate = 10;  // the higher the less the vertex will move in direction of cluster cell! if 1 it will move right away!
 
 	std::vector<glm::vec3> inRange;  //finds all vertices around target
@@ -226,10 +228,10 @@ int main(void)
 	do {
 		if (glfwGetKey(g_pWindow, GLFW_KEY_U) == GLFW_PRESS) {
 
-			if ((uint)i1 < (priorList.size()) && (uint)i2 < (priorList.size())) {
+			if ((uint)i1 < (priorList.size()-2) && (uint)i2 < (priorList.size()-2)) {
 				if (inRange.size() > 0) {
 					for (int i = 0; i < inRange.size(); ++i) {
-						if (glm::distance(inRange[i], priorList[i1]) > 0.0001f) {   //smooth resolution change! converges the vertices in range until they're very close and then cluster em!
+						if (glm::distance(inRange[i], priorList[i1]) > 0.001f) {   //smooth resolution change! converges the vertices in range until they're very close and then cluster em!
 							for (int j = 0; j < indexed_vertices.size(); ++j) {
 								if (indexed_vertices[j] == inRange[i]) {
 									target = j;
@@ -256,31 +258,29 @@ int main(void)
 				else if (priorList[i1] == last1 && priorList[i2] == last2) {
 					i1 += priorList.size();
 				}*/
-				else if (priorList[i1] == last_vertex) {
-					i1 += priorList.size();
-				}
 				else {
 					//indexed_vertices = clustering_remove(indexed_vertices, indices, range, priorList[i1]);
 					i1 += 1;
-					inRange = findVerticesInRange(indexed_vertices, range, priorList[i1], indices);
+					if (i1 < priorList.size() - 2) {
+						inRange = findVerticesInRange(indexed_vertices, range, priorList[i1], indices);
+						indices = updateIndices(indexed_vertices, indices, priorList[i1], priorList[i1]);    // change first priorList[i1] to midPoint(priorList[i1],priorList[i2]) if using half edge collapse
+					}
 					//indexed_vertices = edge_collapse(indexed_vertices, indices, priorList[i1], priorList[i2]);
-					indices = updateIndices(indexed_vertices, indices, priorList[i1], priorList[i1]);    // change first priorList[i1] to midPoint(priorList[i1],priorList[i2]) if using half edge collapse
-					last1 = priorList[i1];
-					last2 = priorList[i2];
 				}
 			}
 			else {
 
 				printf("Priority List ended!\n");
 				printf("Model has now %zu vertices\n", indices.size());
-				if (indices.size() > 3 && indexed_vertices.size() > 1) {
+				if (indices.size() > 3 && indexed_vertices.size() > 3) {
 					indexed_normals = updateNormals(normals, indexed_vertices, indices);	// updates normals of model
 					printf("CREATING NEW ONE!!\n\n");
-					priorList = createPriorityList(indexed_vertices, indices);
-					last_vertex = priorList[priorList.size() - 1];
+					priorList = createPriorityList_test(indexed_vertices, indices);
+					//last_vertex = priorList[priorList.size() - 1];
 					i1 = 0;
 					//i2 = 1;
-					range += 0.01f;  //increases clustering range for further reducing!
+					//range += 0.005f;  //increases clustering range for further reducing!
+					range += range;
 				}
 				else {
 					printf("No further reducing possible\n\n");
@@ -289,15 +289,17 @@ int main(void)
 			//i1+=1;   // set this guy to 2 if using edge_collapse
 			//i2+=2;
 
+			if (indices.size()) {
+				glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
+				glBufferData(GL_ARRAY_BUFFER, indexed_vertices.size() * sizeof(glm::vec3), &indexed_vertices[0], GL_STATIC_DRAW);
+				glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
+				glBufferData(GL_ARRAY_BUFFER, indexed_uvs.size() * sizeof(glm::vec2), &indexed_uvs[0], GL_STATIC_DRAW);
+				glBindBuffer(GL_ARRAY_BUFFER, normalbuffer);
+				glBufferData(GL_ARRAY_BUFFER, indexed_normals.size() * sizeof(glm::vec3), &indexed_normals[0], GL_STATIC_DRAW);
+				glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementbuffer);
+				glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned short), &indices[0], GL_STATIC_DRAW);
+			}
 
-			glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-			glBufferData(GL_ARRAY_BUFFER, indexed_vertices.size() * sizeof(glm::vec3), &indexed_vertices[0], GL_STATIC_DRAW);
-			glBindBuffer(GL_ARRAY_BUFFER, uvbuffer);
-			glBufferData(GL_ARRAY_BUFFER, indexed_uvs.size() * sizeof(glm::vec2), &indexed_uvs[0], GL_STATIC_DRAW);
-			glBindBuffer(GL_ARRAY_BUFFER, normalbuffer);
-			glBufferData(GL_ARRAY_BUFFER, indexed_normals.size() * sizeof(glm::vec3), &indexed_normals[0], GL_STATIC_DRAW);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementbuffer);
-			glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned short), &indices[0], GL_STATIC_DRAW);
 
 		}
 		if (glfwGetKey(g_pWindow, GLFW_KEY_R) == GLFW_PRESS) {
@@ -524,35 +526,39 @@ std::vector<glm::vec3> createPriorityList(std::vector<glm::vec3> indexed_vertice
 	std::vector<glm::vec3> priorList;
 	glm::vec3 a, b, c;
 	float edge1 = 0, edge2 = 0, edge3 = 0;
-	float last_biggest = 0.0f;
+	//float last_biggest = 0.0f;
 	int smallest_i1 = -1, smallest_i2 = -1;
 	float smallest = 0.0f;
 	std::vector<glm::vec3> smallestVectors;
 	int count = 0;
 	do {
-		float biggest = 999999.0f;
+		float smallest = 999999.0f;
 		for (uint i = 0; i < indices.size(); i += 3) {
 			edge1 = glm::distance(indexed_vertices[indices[i]], indexed_vertices[indices[i + 1]]);
 			edge2 = glm::distance(indexed_vertices[indices[i]], indexed_vertices[indices[i + 2]]);
 			edge3 = glm::distance(indexed_vertices[indices[i + 1]], indexed_vertices[indices[i + 2]]);
-			if (edge1 < biggest && edge1 > last_biggest) {
-				biggest = edge1;
-				smallest_i1 = indices[i];
-				smallest_i2 = indices[i + 1];
+			if (edge1 < smallest) {		//if smallest
+				if ( !is_in_vector(priorList, indexed_vertices[indices[i]]) && !is_in_vector(priorList, indexed_vertices[indices[i + 1]]) ) { //if edge is already in priorlist
+					smallest = edge1;
+					smallest_i1 = indices[i];
+					smallest_i2 = indices[i + 1];
+				}
 			}
-			if (edge2 < biggest && edge2 > last_biggest) {
-				biggest = edge2;
-				smallest_i1 = indices[i];
-				smallest_i2 = indices[i + 2];
-
+			if (edge2 < smallest) {
+				if (!is_in_vector(priorList, indexed_vertices[indices[i]]) && !is_in_vector(priorList, indexed_vertices[indices[i + 2]])) {
+					smallest = edge1;
+					smallest_i1 = indices[i];
+					smallest_i2 = indices[i + 2];
+				}
 			}
-			if (edge3 < biggest && edge3 > last_biggest) {
-				biggest = edge3;
-				smallest_i1 = indices[i + 1];
-				smallest_i2 = indices[i + 2];
+			if (edge3 < smallest) {
+				if (!is_in_vector(priorList, indexed_vertices[indices[i+1]]) && !is_in_vector(priorList, indexed_vertices[indices[i + 2]])) {
+					smallest = edge1;
+					smallest_i1 = indices[i+1];
+					smallest_i2 = indices[i + 2];
+				}
 			}
 		}
-		last_biggest = biggest;
 		priorList.insert(priorList.end(), indexed_vertices[smallest_i2]);
 		priorList.insert(priorList.end(), indexed_vertices[smallest_i1]);
 
@@ -704,3 +710,76 @@ int getIndex(glm::vec3 v1, std::vector<glm::vec3> indexed_vertices, std::vector<
 	http://jerrytalton.net/research/t-ssmsa-04/paper.pdf
 
 */
+
+
+
+
+std::vector<glm::vec3> createPriorityList_test(std::vector<glm::vec3> indexed_vertices, std::vector<unsigned short> indices) {
+	std::vector<glm::vec3> priorList;
+	std::vector<glm::vec3> plist;
+	glm::vec3 a, b, c;
+	float edge1 = 0, edge2 = 0, edge3 = 0;
+	//float last_biggest = 0.0f;
+	int smallest_i1 = -1, smallest_i2 = -1;
+	//float smallest = 0.0f;
+	std::vector<glm::vec3> smallestVectors;
+	int count = 0;
+	float dist1,dist2,dist3;
+	float smallest = 999999.0f;
+
+	for (uint i = 0; i < indices.size(); i += 3) {
+		priorList.insert(priorList.end(), indexed_vertices[indices[i]]);
+		priorList.insert(priorList.end(), indexed_vertices[indices[i+1]]);
+
+		priorList.insert(priorList.end(), indexed_vertices[indices[i]]);
+		priorList.insert(priorList.end(), indexed_vertices[indices[i + 2]]);
+
+		priorList.insert(priorList.end(), indexed_vertices[indices[i + 1]]);
+		priorList.insert(priorList.end(), indexed_vertices[indices[i + 2]]);
+	}
+
+	smallest = 999999.0f;
+
+	int i = 0;
+	do {
+		smallest = 999999.0f;
+		i = 0;
+		do {
+			if (i > priorList.size() - 3)
+				break;
+			dist1 = glm::distance(priorList[i], priorList[i + 1]);
+			dist2 = glm::distance(priorList[i], priorList[i + 2]);
+			dist3 = glm::distance(priorList[i + 1], priorList[i + 2]);
+			if (dist1 < smallest) {
+				smallest = dist1;
+				smallest_i1 = i;
+				smallest_i2 = i + 1;
+			}
+			if (dist2 < smallest) {
+				smallest = dist2;
+				smallest_i1 = i;
+				smallest_i2 = i + 2;
+			}
+			if (dist3 < smallest) {
+				smallest = dist3;
+				smallest_i1 = i + 1;
+				smallest_i2 = i + 2;
+			}
+
+			i += 3;
+		} while (true);
+		
+		plist.insert(plist.end(), priorList[smallest_i1]);
+		plist.insert(plist.end(), priorList[smallest_i2]);
+		priorList.erase(priorList.begin() + smallest_i1, priorList.begin() + smallest_i2);
+	} while (priorList.size() > 3);
+
+	if (priorList.size() > 0) {
+		while (priorList.size() > 0) {
+			plist.insert(plist.end(), priorList[0]);
+			priorList.erase(priorList.begin());
+		}
+	}
+
+	return plist;
+}
